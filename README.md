@@ -8,7 +8,7 @@ The hardware used here are :
 2) Cytron Technologies WiFi ESP8266 shield.
 3) Dust Sensor : ShinYei PPD42
 
-Library used :
+Libraries used :
 1) PubSubClient : https://github.com/knolleary/pubsubclient
 2) WiFiESP : https://github.com/bportaluri/WiFiEsp
 
