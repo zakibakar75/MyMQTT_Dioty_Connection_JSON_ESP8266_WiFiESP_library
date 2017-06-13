@@ -11,8 +11,9 @@ The hardware used here are :
 Libraries used :
 1) PubSubClient : https://github.com/knolleary/pubsubclient
 2) WiFiESP : https://github.com/bportaluri/WiFiEsp
+3) Arduino JSON : https://github.com/bblanchon/ArduinoJson
 
-Don't use Cytron ESP8266 library (https://github.com/CytronTechnologies/CytronWiFiShield) because it won't work on MQTT connection.
+Please, don't use Cytron ESP8266 library (https://github.com/CytronTechnologies/CytronWiFiShield) because it won't work on MQTT connection.
 Took me some time to try different libraries to make MQTT to work.
 
 As far as the MQTT broker is concerned, initially, i used HiveMQ MQTT public broker, but since it always up and down, i decided to change to another MQTT public broker, ie Dioty.
