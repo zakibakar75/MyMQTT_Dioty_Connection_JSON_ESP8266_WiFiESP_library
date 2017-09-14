@@ -26,32 +26,34 @@ int status = WL_IDLE_STATUS;     // the Wifi radio's status
 /* For JSON packet */
 long lastMsg = 0;
 char msg[180];
-char temp[20],temp2[20],temp3[20],temp4[20];
+char temp[20],temp2[20];
 int value = 0;
 /* end for JSON packet */
 
-/* For Dust Sensor */
+/****** for dust sensor *******/
+#define CHILD_ID_DUST_PM10            0
+#define CHILD_ID_DUST_PM25            1
+#define DUST_SENSOR_DIGITAL_PIN_PM10  3
+
+unsigned long SLEEP_TIME = 7*1000; // Sleep time between reads (in milliseconds)
+//VARIABLES
+int val = 0;           // variable to store the value coming from the sensor
+float valDUSTPM25 =0.0;
+float lastDUSTPM25 =0.0;
+float valDUSTPM10 =0.0;
+float lastDUSTPM10 =0.0;
+unsigned long duration;
 unsigned long starttime;
-unsigned long triggerOnP1;
-unsigned long triggerOffP1;
-unsigned long pulseLengthP1;
-unsigned long durationP1;
-boolean valP1 = HIGH;
-boolean triggerP1 = false;
+unsigned long endtime;
+unsigned long sampletime_ms = 7000;
+unsigned long lowpulseoccupancy = 0;
+float ratio = 0;
+long concentrationPM25 = 0;
+long concentrationPM10 = 0;
+int temp=28; //external temperature, if you can replace this with a DHT11 or better 
+long ppmv;
+/***********************************************************************/
 
-unsigned long triggerOnP2;
-unsigned long triggerOffP2;
-unsigned long pulseLengthP2;
-unsigned long durationP2;
-boolean valP2 = HIGH;
-boolean triggerP2 = false;
-
-float ratioP1 = 0;
-float ratioP2 = 0;
-unsigned long sampletime_ms = 10000;
-float countP1;
-float countP2;
-/* end for Dust Sensor */
 
 void setup()
 {
@@ -61,6 +63,10 @@ void setup()
   Serial1.begin(9600);
   // initialize ESP module
   WiFi.init(&Serial1);
+  
+  /*****for dust sensor********/
+  pinMode(DUST_SENSOR_DIGITAL_PIN_PM10,INPUT);
+  /**************************/
 
   // check for the presence of the shield
   if (WiFi.status() == WL_NO_SHIELD) {
@@ -169,92 +175,54 @@ void reconnect() {
 
 void loop() {
 
-  float PM10count;
-  float PM25count;
-  float concLarge;
-  float concSmall;
 
-  StaticJsonBuffer<200> jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();  
+      StaticJsonBuffer<200> jsonBuffer;
+      JsonObject& root = jsonBuffer.createObject();  
 
-  if (!mqttClient.connected()) {
-    reconnect();
-  }
+      if (!mqttClient.connected()) {
+          reconnect();
+      }
 
-  delay(1000);
-  mqttClient.loop();
-
-  /* For Dust Sensor */
-  valP1 = digitalRead(8);
-  valP2 = digitalRead(9);  
+      delay(1000);
+      mqttClient.loop();
   
-  if(valP1 == LOW && triggerP1 == false){
-    triggerP1 = true;
-    triggerOnP1 = micros();
-  }
+     /************** For Dust Sensor ********************/
+      //get PM 1.0 - density of particles over 1 μm.
+      concentrationPM10=getPM(DUST_SENSOR_DIGITAL_PIN_PM10);
+      Serial.print("PM10: ");
+      Serial.println(concentrationPM10);
+      Serial.print("\n");
+      //ppmv=mg/m3 * (0.08205*Tmp)/Molecular_mass
+      //0.08205   = Universal gas constant in atm·m3/(kmol·K)
+      ppmv=(concentrationPM10*0.0283168/100/1000) *  (0.08205*temp)/0.01;
   
-  if (valP1 == HIGH && triggerP1 == true){
-      triggerOffP1 = micros();
-      pulseLengthP1 = triggerOffP1 - triggerOnP1;
-      durationP1 = durationP1 + pulseLengthP1;
-      triggerP1 = false;
-  }
-  
-  if(valP2 == LOW && triggerP2 == false){
-     triggerP2 = true;
-     triggerOnP2 = micros();
-  }
-  
-  if (valP2 == HIGH && triggerP2 == true){
-      triggerOffP2 = micros();
-      pulseLengthP2 = triggerOffP2 - triggerOnP2;
-      durationP2 = durationP2 + pulseLengthP2;
-      triggerP2 = false;
-  }
-  
-  if ((millis() - starttime) > sampletime_ms) {
-      
-      ratioP1 = durationP1/(sampletime_ms*10.0);  // Integer percentage 0=>100
-      ratioP2 = durationP2/(sampletime_ms*10.0);
-      countP1 = 1.1*pow(ratioP1,3)-3.8*pow(ratioP1,2)+520*ratioP1+0.62;
-      countP2 = 1.1*pow(ratioP2,3)-3.8*pow(ratioP2,2)+520*ratioP2+0.62;
-      PM10count = countP2;
-      PM25count = countP1 - countP2;
-      
-      // first, PM10 count to mass concentration conversion
-      double r10 = 2.6*pow(10,-6);
-      double pi = 3.14159;
-      double vol10 = (4.0/3.0)*pi*pow(r10,3);
-      double density = 1.65*pow(10,12);
-      double mass10 = density*vol10;
-      double K = 3531.5;
-      concLarge = (PM10count)*K*mass10;
-      
-      // next, PM2.5 count to mass concentration conversion
-      double r25 = 0.44*pow(10,-6);
-      double vol25 = (4.0/3.0)*pi*pow(r25,3);
-      double mass25 = density*vol25;
-      concSmall = (PM25count)*K*mass25;
-
-      Serial.print(PM10count);     
-      Serial.print(",");
-      Serial.print(PM25count);      
-      Serial.print(",");
-      Serial.print(concLarge);      
-      Serial.print(",");
-      Serial.print(concSmall);
-
-      Serial.println();
-
-      dtostrf( PM10count, 3, 2, temp );      
-      dtostrf( PM25count, 3, 2, temp2 );      
-      dtostrf( concLarge, 3, 2, temp3 );      
-      dtostrf( concSmall, 3, 2, temp4 );
-      
-      root["PM10Count"] = temp;
-      root["PM25Count"] = temp2;
-      root["concLarge"] = temp3;
-      root["concSmall"] = temp4;
+      if ((ceil(concentrationPM10) != lastDUSTPM10)&&((long)concentrationPM10>0)) 
+      {
+          //gw.send(dustMsgPM10.set((long)ppmv));
+          Serial.print("ppmv PM10: ");
+          Serial.println(ppmv);
+          Serial.print("\n");
+          lastDUSTPM10 = ceil(concentrationPM10);
+        
+          dtostrf( lastDUSTPM10, 3, 2, temp );
+          root["PM10Count"] = temp;
+        
+          if(ppmv > 0)
+          {  
+             dtostrf( ppmv, 3, 2, temp2 );       
+             root["ppmvPM10Count"] = temp2;
+          }
+          else
+          {
+             root["ppmvPM10Count"] = 0;
+          }
+            
+      }
+      else
+      {
+          root["PM10Count"] = 0;
+          root["ppmvPM10Count"] = 0;
+      }
 
       delay(1000);
 
@@ -264,14 +232,48 @@ void loop() {
       Serial.println("Publish message : ");
       Serial.println(msg);
       mqttClient.publish("/zaki.bm@gmail.com/1234", msg);
-          
-      durationP1 = 0;
-      durationP2 = 0;
-      starttime = millis();
-
-      /* end for Dust Sensor */
+     
+      /******* end for Dust Sensor *********/
   }
-
   
 }
 
+float conversion10(long concentrationPM10) {
+  double pi = 3.14159;
+  double density = 1.65 * pow (10, 12);
+  double r10 = 0.44 * pow (10, -6);
+  double vol10 = (4/3) * pi * pow (r10, 3);
+  double mass10 = density * vol10;
+  double K = 3531.5;
+  return (concentrationPM10) * K * mass10;
+}
+
+long getPM(int DUST_SENSOR_DIGITAL_PIN) {
+
+  starttime = millis();
+
+  while (1) {
+  
+    duration = pulseIn(DUST_SENSOR_DIGITAL_PIN, LOW);
+    lowpulseoccupancy += duration;
+    endtime = millis();
+    
+    if ((endtime-starttime) > sampletime_ms)
+    {
+    ratio = (lowpulseoccupancy-endtime+starttime)/(sampletime_ms*10.0);  // Integer percentage 0=>100
+                long concentration = 1.1*pow(ratio,3)-3.8*pow(ratio,2)+520*ratio+0.62; // using spec sheet curve
+    Serial.print("lowpulseoccupancy:");
+    Serial.print(lowpulseoccupancy);
+    Serial.print("\n");
+    Serial.print("ratio:");
+    Serial.print(ratio);
+    Serial.print("\n");
+    Serial.print("PPDNS42:");
+    Serial.println(concentration);
+    Serial.print("\n");
+    
+    lowpulseoccupancy = 0;
+    return(concentration);    
+    }
+  }  
+}
