@@ -3,7 +3,6 @@ MQTT Connection - Sending Dust Sensor Information
 */
 
 #include "WiFiEsp.h"
-#include "SoftwareSerial.h"
 #include <PubSubClient.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,14 +11,18 @@ MQTT Connection - Sending Dust Sensor Information
 
 #define BUILTIN_LED 13
 
-SoftwareSerial Serial1(2, 3); // RX, TX
+// Emulate Serial1 on pins 2/3 if not present
+#ifndef HAVE_HWSERIAL1
+#include "SoftwareSerial.h"
+SoftwareSerial Serial1(8, 9); // RX, TX
+#endif
 
 WiFiEspClient client;
 PubSubClient mqttClient(client);
 
 const char* server = "mqtt.dioty.co"; //MQTT server (of your choice)
-char ssid[] = "myAlixAP";            // your network SSID (name)
-char pass[] = "mimosian";        // your network password
+char ssid[] = "MyRouter";            // your network SSID (name)
+char pass[] = "yourpassword";        // your network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 
 
@@ -50,13 +53,18 @@ unsigned long lowpulseoccupancy = 0;
 float ratio = 0;
 long concentrationPM25 = 0;
 long concentrationPM10 = 0;
-int temp=28; //external temperature, if you can replace this with a DHT11 or better 
+int temperature = 28; //external temperature, if you can replace this with a DHT11 or better 
 long ppmv;
 /***********************************************************************/
 
 
 void setup()
 {
+
+  /*****for dust sensor********/
+  pinMode(DUST_SENSOR_DIGITAL_PIN_PM10,INPUT);
+  /**************************/
+  
   // initialize serial for debugging
   Serial.begin(115200);
   // initialize serial for ESP module
@@ -64,16 +72,12 @@ void setup()
   // initialize ESP module
   WiFi.init(&Serial1);
   
-  /*****for dust sensor********/
-  pinMode(DUST_SENSOR_DIGITAL_PIN_PM10,INPUT);
-  /**************************/
-
   // check for the presence of the shield
   if (WiFi.status() == WL_NO_SHIELD) {
     Serial.println("WiFi shield not present");
     // don't continue
     while (true);
-  }
+  }  
 
   // attempt to connect to WiFi network
   while ( status != WL_CONNECTED) {
@@ -83,8 +87,8 @@ void setup()
     status = WiFi.begin(ssid, pass);
   }
 
-  Serial.println("You're connected to the network");
-
+  Serial.println("You're connected to the network"); 
+  
   delay(1500);
   mqttClient.setServer(server, 1883);
   mqttClient.setCallback(callback);
@@ -156,7 +160,7 @@ void reconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (mqttClient.connect(NULL,"zaki.bm@gmail.com","aa3ca97e")) {
+    if (mqttClient.connect(NULL,"zaki.bm@gmail.com","yourdiotypassword")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       mqttClient.publish("/zaki.bm@gmail.com/1234", "hello world");
@@ -173,8 +177,38 @@ void reconnect() {
 }
 
 
-void loop() {
+long getPM(int DUST_SENSOR_DIGITAL_PIN) {
 
+  starttime = millis();
+
+  while (1) {
+  
+    duration = pulseIn(DUST_SENSOR_DIGITAL_PIN, LOW);
+    lowpulseoccupancy += duration;
+    endtime = millis();
+    
+    if ((endtime-starttime) > sampletime_ms)
+    {
+    ratio = (lowpulseoccupancy-endtime+starttime)/(sampletime_ms*10.0);  // Integer percentage 0=>100
+                long concentration = 1.1*pow(ratio,3)-3.8*pow(ratio,2)+520*ratio+0.62; // using spec sheet curve
+    Serial.print("lowpulseoccupancy:");
+    Serial.print(lowpulseoccupancy);
+    Serial.print("\n");
+    Serial.print("ratio:");
+    Serial.print(ratio);
+    Serial.print("\n");
+    Serial.print("PPDNS42:");
+    Serial.println(concentration);
+    Serial.print("\n");
+    
+    lowpulseoccupancy = 0;
+    return(concentration);    
+    }
+  }  
+}
+
+
+void loop() {
 
       StaticJsonBuffer<200> jsonBuffer;
       JsonObject& root = jsonBuffer.createObject();  
@@ -188,13 +222,13 @@ void loop() {
   
      /************** For Dust Sensor ********************/
       //get PM 1.0 - density of particles over 1 μm.
-      concentrationPM10=getPM(DUST_SENSOR_DIGITAL_PIN_PM10);
+      concentrationPM10 = getPM(DUST_SENSOR_DIGITAL_PIN_PM10);
       Serial.print("PM10: ");
       Serial.println(concentrationPM10);
       Serial.print("\n");
       //ppmv=mg/m3 * (0.08205*Tmp)/Molecular_mass
       //0.08205   = Universal gas constant in atm·m3/(kmol·K)
-      ppmv=(concentrationPM10*0.0283168/100/1000) *  (0.08205*temp)/0.01;
+      ppmv = (concentrationPM10*0.0283168/100/1000) *  (0.08205*temperature)/0.01;
   
       if ((ceil(concentrationPM10) != lastDUSTPM10)&&((long)concentrationPM10>0)) 
       {
@@ -234,46 +268,4 @@ void loop() {
       mqttClient.publish("/zaki.bm@gmail.com/1234", msg);
      
       /******* end for Dust Sensor *********/
-  }
-  
-}
-
-float conversion10(long concentrationPM10) {
-  double pi = 3.14159;
-  double density = 1.65 * pow (10, 12);
-  double r10 = 0.44 * pow (10, -6);
-  double vol10 = (4/3) * pi * pow (r10, 3);
-  double mass10 = density * vol10;
-  double K = 3531.5;
-  return (concentrationPM10) * K * mass10;
-}
-
-long getPM(int DUST_SENSOR_DIGITAL_PIN) {
-
-  starttime = millis();
-
-  while (1) {
-  
-    duration = pulseIn(DUST_SENSOR_DIGITAL_PIN, LOW);
-    lowpulseoccupancy += duration;
-    endtime = millis();
-    
-    if ((endtime-starttime) > sampletime_ms)
-    {
-    ratio = (lowpulseoccupancy-endtime+starttime)/(sampletime_ms*10.0);  // Integer percentage 0=>100
-                long concentration = 1.1*pow(ratio,3)-3.8*pow(ratio,2)+520*ratio+0.62; // using spec sheet curve
-    Serial.print("lowpulseoccupancy:");
-    Serial.print(lowpulseoccupancy);
-    Serial.print("\n");
-    Serial.print("ratio:");
-    Serial.print(ratio);
-    Serial.print("\n");
-    Serial.print("PPDNS42:");
-    Serial.println(concentration);
-    Serial.print("\n");
-    
-    lowpulseoccupancy = 0;
-    return(concentration);    
-    }
-  }  
 }
