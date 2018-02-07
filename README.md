@@ -1,7 +1,7 @@
 # MyMQTT_Dioty_Connection_JSON_ESP8266_WiFiESP_library
 MQTT connection using ESP8266 Cytron WiFi Shield to Dioty MQTT broker 
 
-This is not a library. This is my code to publish my Dust Sensor reading to Dioty MQTT broker.
+This is my code to publish my Dust Sensor reading to Dioty MQTT broker.
 
 The hardware used here are :
 1) Arduino UNO clone.
