@@ -4,7 +4,7 @@ MQTT connection using ESP8266 Cytron WiFi Shield to Dioty MQTT broker
 This is my code to publish my Dust Sensor reading to Dioty MQTT broker.
 
 The hardware used here are :
-1) Arduino UNO clone.
+1) Arduino UNO.
 2) Cytron Technologies WiFi ESP8266 shield.
 3) Dust Sensor : ShinYei PPD42
 
